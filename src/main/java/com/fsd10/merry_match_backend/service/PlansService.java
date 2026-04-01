@@ -11,6 +11,7 @@ import com.fsd10.merry_match_backend.dto.plan.PlanDescriptionDto;
 import com.fsd10.merry_match_backend.dto.plan.PlanDto;
 import com.fsd10.merry_match_backend.entity.PlanDescription;
 import com.fsd10.merry_match_backend.entity.Plans;
+import com.fsd10.merry_match_backend.exception.PlanNotFoundException;
 import com.fsd10.merry_match_backend.repository.PlansRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class PlansService {
 
     public PlanDto getPlanById(UUID id) {
         var plan = plansRepository.findWithDescriptionsById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+                .orElseThrow(PlanNotFoundException::new);
         return toDto(plan);
     }
 
