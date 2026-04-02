@@ -16,5 +16,11 @@ public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID
   @Modifying
   @Query("update ProfileImage p set p.isPrimary = false where p.userId = :userId")
   void clearPrimaryByUserId(@Param("userId") UUID userId);
+
+  long deleteByIdAndUserId(UUID id, UUID userId);
+
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query("delete from ProfileImage p where p.userId = :userId")
+  int deleteAllByUserId(@Param("userId") UUID userId);
 }
 

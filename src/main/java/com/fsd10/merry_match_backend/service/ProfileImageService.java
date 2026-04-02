@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -92,6 +93,45 @@ public class ProfileImageService {
         .isPrimary(saved.isPrimary())
         .createdAt(saved.getCreatedAt())
         .build();
+  }
+
+  @Transactional(readOnly = true)
+  public List<ProfileImageUploadResponse> listForUser(UUID userId) {
+    return profileImageRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+        .map(img -> ProfileImageUploadResponse.builder()
+            .id(img.getId())
+            .userId(img.getUserId())
+            .imageUrl(img.getImageUrl())
+            .isPrimary(img.isPrimary())
+            .createdAt(img.getCreatedAt())
+            .build())
+        .toList();
+  }
+
+  @Transactional
+  public void deleteForUser(UUID userId, UUID imageId) {
+    ProfileImage img = profileImageRepository.findById(imageId)
+        .filter(i -> userId.equals(i.getUserId()))
+        .orElseThrow(() -> new EntityNotFoundException("Profile image not found"));
+
+    // best-effort storage cleanup, then DB
+    deleteObjectByPublicUrlIfPossible(img.getImageUrl());
+
+    long deleted = profileImageRepository.deleteByIdAndUserId(imageId, userId);
+    if (deleted == 0) throw new EntityNotFoundException("Profile image not found");
+  }
+
+  /**
+   * Delete all profile images for a user, including Supabase Storage objects.
+   * Best-effort: storage deletions are attempted and logged; DB cleanup always proceeds.
+   */
+  @Transactional
+  public void deleteAllForUser(UUID userId) {
+    List<ProfileImage> imgs = profileImageRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    for (ProfileImage img : imgs) {
+      deleteObjectByPublicUrlIfPossible(img.getImageUrl());
+    }
+    profileImageRepository.deleteAllByUserId(userId);
   }
 
   @Transactional
@@ -277,6 +317,7 @@ public class ProfileImageService {
     HttpRequest request = HttpRequest.newBuilder()
         .uri(URI.create(uploadUrl))
         .header("Authorization", "Bearer " + apiKey)
+        .header("apikey", apiKey)
         .header("Content-Type", ct)
         .POST(HttpRequest.BodyPublishers.ofByteArray(bytes))
         .build();
@@ -290,6 +331,65 @@ public class ProfileImageService {
     } catch (IOException | InterruptedException e) {
       throw new IllegalStateException("Supabase upload error", e);
     }
+  }
+
+  private void deleteObjectByPublicUrlIfPossible(String publicUrl) {
+    Optional<String> objectName = extractObjectNameFromPublicUrl(publicUrl);
+    if (objectName.isEmpty()) return;
+
+    String restBaseUrl = resolveSupabaseRestBaseUrl(supabaseUrl);
+    String deleteUrl = restBaseUrl + "/storage/v1/object/" + supabaseBucket + "/" + objectName.get();
+
+    HttpClient client = HttpClient.newHttpClient();
+    HttpRequest req = HttpRequest.newBuilder()
+        .uri(URI.create(deleteUrl))
+        .header("apikey", supabaseApiKey)
+        .header("Authorization", "Bearer " + supabaseApiKey)
+        .DELETE()
+        .build();
+
+    try {
+      HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+      // Storage returns 200/204 when deleted; 404 if already gone.
+      if (res.statusCode() == 404) {
+        log.info("Supabase storage object already missing: bucket={}, path={}", supabaseBucket, objectName.get());
+        return;
+      }
+      if (res.statusCode() < 200 || res.statusCode() >= 300) {
+        log.warn("Supabase storage delete failed: status={}, bucket={}, path={}, body={}",
+            res.statusCode(), supabaseBucket, objectName.get(), truncateForLog(res.body()));
+      }
+    } catch (IOException | InterruptedException e) {
+      log.warn("Supabase storage delete error: bucket={}, path={}, msg={}", supabaseBucket, objectName.get(), e.getMessage());
+    }
+  }
+
+  private Optional<String> extractObjectNameFromPublicUrl(String publicUrl) {
+    if (publicUrl == null || publicUrl.isBlank()) return Optional.empty();
+
+    String restBaseUrl = resolveSupabaseRestBaseUrl(supabaseUrl);
+    String prefix = restBaseUrl + "/storage/v1/object/public/" + supabaseBucket + "/";
+
+    String u = publicUrl.trim();
+    if (u.startsWith(prefix)) {
+      return Optional.of(u.substring(prefix.length()));
+    }
+
+    // handle URLs where base differs but path format matches
+    String marker = "/storage/v1/object/public/" + supabaseBucket + "/";
+    int idx = u.indexOf(marker);
+    if (idx >= 0) {
+      return Optional.of(u.substring(idx + marker.length()));
+    }
+
+    return Optional.empty();
+  }
+
+  private static String truncateForLog(String s) {
+    if (s == null) return "";
+    int max = 2000;
+    if (s.length() <= max) return s;
+    return s.substring(0, max) + "... (truncated)";
   }
 
   private ParsedDataUrl parseDataUrl(String dataUrl) {

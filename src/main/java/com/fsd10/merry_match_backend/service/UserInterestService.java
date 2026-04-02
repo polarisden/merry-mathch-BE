@@ -46,7 +46,7 @@ public class UserInterestService {
       throw new IllegalArgumentException("Interest not found: " + missing);
     }
 
-    userInterestRepository.deleteByUser_Id(userId);
+    userInterestRepository.deleteAllByUserId(userId);
 
     List<UserInterest> rows = new ArrayList<>(interests.size());
     List<UUID> savedInterestIds = new ArrayList<>(interests.size());

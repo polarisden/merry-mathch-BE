@@ -94,7 +94,7 @@ public class UserProfileService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown interestIds: " + missing);
 		}
 
-		userInterestRepository.deleteByUser_Id(user.getId());
+		userInterestRepository.deleteAllByUserId(user.getId());
 
 		var rows = interests.stream().map(i -> {
 			var ui = new UserInterest();
