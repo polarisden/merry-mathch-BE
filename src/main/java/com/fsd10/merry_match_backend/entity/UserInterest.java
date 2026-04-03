@@ -1,46 +1,49 @@
 package com.fsd10.merry_match_backend.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.time.Instant;
 import java.util.UUID;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 @Entity
 @Table(name = "user_interests")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class UserInterest {
 
-  @Id
-  @Column(columnDefinition = "uuid")
-  private UUID id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.UUID)
+	@Column(name = "id", nullable = false, updatable = false)
+	private UUID id;
 
-  @Column(name = "user_id", nullable = false, columnDefinition = "uuid")
-  private UUID userId;
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "user_id", nullable = false)
+	private User user;
 
-  @Column(name = "interest_id", nullable = false, columnDefinition = "uuid")
-  private UUID interestId;
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "interest_id", nullable = false)
+	private Interest interest;
 
-  @Column(name = "created_at")
-  private Instant createdAt;
+	@Column(name = "created_at", nullable = false, updatable = false)
+	private Instant createdAt;
 
-  @PrePersist
-  void onCreate() {
-    if (this.createdAt == null) {
-      this.createdAt = Instant.now();
-    }
-    if (this.id == null) {
-      this.id = UUID.randomUUID();
-    }
-  }
+	@PrePersist
+	void prePersist() {
+		if (createdAt == null) {
+			createdAt = Instant.now();
+		}
+	}
 }

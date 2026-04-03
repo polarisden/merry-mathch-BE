@@ -10,12 +10,15 @@ import com.fsd10.merry_match_backend.exception.EmailAlreadyUsedException;
 import com.fsd10.merry_match_backend.exception.LoginFailedException;
 import com.fsd10.merry_match_backend.exception.RegisterFailedException;
 import com.fsd10.merry_match_backend.exception.UsernameAlreadyUsedException;
+import com.fsd10.merry_match_backend.repository.ProfileImageRepository;
+import com.fsd10.merry_match_backend.repository.UserInterestRepository;
 import com.fsd10.merry_match_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.net.URI;
@@ -34,6 +37,7 @@ public class AuthService {
 
   private final UserRepository userRepository;
   private final ProfileImageService profileImageService;
+  private final UserInterestRepository userInterestRepository;
 
   /** Parsed Supabase /auth/v1/signup response (tokens optional). */
   private record SignupResult(
@@ -49,6 +53,40 @@ public class AuthService {
 
   @Value("${supabase.apiKey}")
   private String supabaseApiKey;
+
+  @Transactional
+  public void deleteAccount(UUID userId) {
+    // Remove dependent rows first (FK safety)
+    userInterestRepository.deleteAllByUserId(userId);
+    profileImageService.deleteAllForUser(userId);
+    userRepository.deleteById(userId);
+
+    // Delete Supabase Auth user (service role key)
+    deleteSupabaseAuthUser(userId);
+  }
+
+  private void deleteSupabaseAuthUser(UUID userId) {
+    String restBaseUrl = resolveSupabaseRestBaseUrl(supabaseUrl);
+    String url = restBaseUrl + "/auth/v1/admin/users/" + userId;
+
+    HttpClient client = HttpClient.newHttpClient();
+    HttpRequest req = HttpRequest.newBuilder()
+        .uri(URI.create(url))
+        .header("apikey", supabaseApiKey)
+        .header("Authorization", "Bearer " + supabaseApiKey)
+        .DELETE()
+        .build();
+
+    try {
+      HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+      if (res.statusCode() < 200 || res.statusCode() >= 300) {
+        log.error("Supabase admin delete user failed: status={}, body={}", res.statusCode(), truncateForLog(res.body()));
+        throw new IllegalStateException("Delete auth user failed (status=" + res.statusCode() + ")");
+      }
+    } catch (IOException | InterruptedException e) {
+      throw new IllegalStateException("Delete auth user request error: " + e.getMessage(), e);
+    }
+  }
 
   public AvailabilityResponse checkAvailability(String email, String username) {
     String normalizedEmail = email == null ? "" : email.trim().toLowerCase();
