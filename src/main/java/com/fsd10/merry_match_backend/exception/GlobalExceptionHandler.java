@@ -16,6 +16,11 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+  @ExceptionHandler(PlanNotFoundException.class)
+  public ResponseEntity<Map<String, Object>> handlePlanNotFound(PlanNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(bodyWithMessage("Not Found", ex.getMessage()));
+  }
+
   @ExceptionHandler(RegisterFailedException.class)
   public ResponseEntity<Map<String, Object>> handleRegisterFailed(RegisterFailedException ex) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(bodyWithMessage("Bad Request", ex.getMessage()));
