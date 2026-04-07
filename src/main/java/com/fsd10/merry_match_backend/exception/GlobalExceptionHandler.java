@@ -31,6 +31,16 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(bodyWithMessage("Unauthorized", ex.getMessage()));
   }
 
+  @ExceptionHandler(EmailAlreadyUsedException.class)
+  public ResponseEntity<Map<String, Object>> handleEmailAlreadyUsed(EmailAlreadyUsedException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(bodyWithMessageAndField("Conflict", ex.getMessage(), "email"));
+  }
+
+  @ExceptionHandler(UsernameAlreadyUsedException.class)
+  public ResponseEntity<Map<String, Object>> handleUsernameAlreadyUsed(UsernameAlreadyUsedException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(bodyWithMessageAndField("Conflict", ex.getMessage(), "username"));
+  }
+
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<Map<String, Object>> handleUnreadableJson(HttpMessageNotReadableException ex) {
     return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(bodyWithMessage("Bad Request", ex.getMessage()));
@@ -63,6 +73,12 @@ public class GlobalExceptionHandler {
     Map<String, Object> body = new HashMap<>();
     body.put("error", error);
     body.put("message", message);
+    return body;
+  }
+
+  private Map<String, Object> bodyWithMessageAndField(String error, String message, String field) {
+    Map<String, Object> body = bodyWithMessage(error, message);
+    body.put("field", field);
     return body;
   }
 }
