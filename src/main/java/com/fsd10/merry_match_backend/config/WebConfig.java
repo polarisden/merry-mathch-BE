@@ -9,7 +9,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebConfig {
 
-    @Value("${cors.allowed-origins:http://localhost:5173}")
+    /**
+     * Comma-separated list of allowed origin patterns.
+     * Examples:
+     * - http://localhost:5173
+     * - https://*.vercel.app
+     */
+    @Value("${cors.allowed-origins:http://localhost:5173,https://*.vercel.app}")
     private String allowedOrigins;
 
     @Bean
@@ -18,10 +24,10 @@ public class WebConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins(allowedOrigins.split(","))
+                        .allowedOriginPatterns(allowedOrigins.split(","))
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .allowCredentials(true);
+                        .allowCredentials(false);
             }
         };
     }
