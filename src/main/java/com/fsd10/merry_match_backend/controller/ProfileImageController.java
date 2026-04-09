@@ -1,6 +1,7 @@
 package com.fsd10.merry_match_backend.controller;
 
 import com.fsd10.merry_match_backend.dto.ProfileImageUploadResponse;
+import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.service.ProfileImageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class ProfileImageController {
 
   private final ProfileImageService profileImageService;
+  private final SupabaseJwtService supabaseJwtService;
 
   @PostMapping("/users/me/profile-images")
   public ResponseEntity<ProfileImageUploadResponse> upload(
@@ -29,7 +31,7 @@ public class ProfileImageController {
     }
 
     try {
-      UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+      UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
       ProfileImageUploadResponse response = profileImageService.uploadForUser(userId, file, isPrimary);
       return ResponseEntity.status(HttpStatus.CREATED).body(response);
     } catch (IllegalArgumentException e) {
@@ -45,7 +47,7 @@ public class ProfileImageController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
     try {
-      UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+      UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
       return ResponseEntity.ok(profileImageService.listForUser(userId));
     } catch (IllegalArgumentException e) {
       return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
@@ -61,7 +63,7 @@ public class ProfileImageController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
     try {
-      UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+      UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
       profileImageService.deleteForUser(userId, imageId);
       return ResponseEntity.noContent().build();
     } catch (IllegalArgumentException e) {

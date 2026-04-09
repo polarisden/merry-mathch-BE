@@ -2,7 +2,6 @@ package com.fsd10.merry_match_backend.service;
 
 import com.fsd10.merry_match_backend.dto.ProfileImageUploadResponse;
 import com.fsd10.merry_match_backend.entity.ProfileImage;
-import com.fsd10.merry_match_backend.entity.User;
 import com.fsd10.merry_match_backend.repository.ProfileImageRepository;
 import com.fsd10.merry_match_backend.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -18,15 +17,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -207,68 +203,6 @@ public class ProfileImageService {
         .build();
 
     return profileImageRepository.save(img);
-  }
-
-  /**
-   * Extract userId from JWT without Jackson:
-   * - decode payload (base64url)
-   * - read claim "sub" / "user_id" / "id" / "email" fallback
-   */
-  public UUID extractUserIdFromJwt(String bearerToken) {
-    if (bearerToken == null || bearerToken.isBlank()) {
-      throw new IllegalArgumentException("Missing Authorization header");
-    }
-
-    String token = bearerToken.trim();
-    if (token.toLowerCase().startsWith("bearer ")) {
-      token = token.substring(7).trim();
-    }
-
-    String[] parts = token.split("\\.");
-    if (parts.length < 2) {
-      throw new IllegalArgumentException("Invalid JWT format");
-    }
-
-    String payloadJson = new String(
-        Base64.getUrlDecoder().decode(parts[1]),
-        StandardCharsets.UTF_8
-    );
-
-    UUID fromSub = extractUuidClaim(payloadJson, "sub");
-    if (fromSub != null) return fromSub;
-
-    UUID fromUserId = extractUuidClaim(payloadJson, "user_id");
-    if (fromUserId != null) return fromUserId;
-
-    UUID fromId = extractUuidClaim(payloadJson, "id");
-    if (fromId != null) return fromId;
-
-    String email = extractStringClaim(payloadJson, "email");
-    if (email != null && !email.isBlank()) {
-      User user = userRepository.findByEmail(email.toLowerCase().trim())
-          .orElseThrow(() -> new EntityNotFoundException("User not found for email: " + email));
-      return user.getId();
-    }
-
-    throw new IllegalArgumentException("Cannot extract user id from JWT claims");
-  }
-
-  private UUID extractUuidClaim(String payloadJson, String claimName) {
-    String v = extractStringClaim(payloadJson, claimName);
-    if (v == null || v.isBlank()) return null;
-    try {
-      return UUID.fromString(v);
-    } catch (IllegalArgumentException ignore) {
-      return null;
-    }
-  }
-
-  private String extractStringClaim(String payloadJson, String claimName) {
-    // Matches: "claimName":"<value>"
-    Pattern pattern = Pattern.compile("\"" + Pattern.quote(claimName) + "\"\\s*:\\s*\"([^\"]+)\"");
-    Matcher matcher = pattern.matcher(payloadJson);
-    if (!matcher.find()) return null;
-    return matcher.group(1);
   }
 
   private String resolveSupabaseRestBaseUrl(String url) {
