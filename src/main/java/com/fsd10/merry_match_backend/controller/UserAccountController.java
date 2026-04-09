@@ -1,7 +1,7 @@
 package com.fsd10.merry_match_backend.controller;
 
+import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.service.AuthService;
-import com.fsd10.merry_match_backend.service.ProfileImageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +18,7 @@ import java.util.UUID;
 public class UserAccountController {
 
   private final AuthService authService;
-  private final ProfileImageService profileImageService;
+  private final SupabaseJwtService supabaseJwtService;
 
   @DeleteMapping("/users/me")
   public ResponseEntity<Void> deleteMyAccount(
@@ -28,7 +28,7 @@ public class UserAccountController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
     try {
-      UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+      UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
       authService.deleteAccount(userId);
       return ResponseEntity.noContent().build();
     } catch (IllegalArgumentException e) {

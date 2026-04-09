@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fsd10.merry_match_backend.dto.UpdateUserProfileRequest;
 import com.fsd10.merry_match_backend.dto.UserProfileResponse;
-import com.fsd10.merry_match_backend.service.ProfileImageService;
+import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.service.UserProfileService;
 
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class UserProfileController {
 
 	private final UserProfileService userProfileService;
-	private final ProfileImageService profileImageService;
+	private final SupabaseJwtService supabaseJwtService;
 
 	@GetMapping("/users/{userId}/profile")
 	public ResponseEntity<UserProfileResponse> getProfile(@PathVariable UUID userId) {
@@ -48,7 +48,7 @@ public class UserProfileController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		try {
-			UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+			UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
 			return ResponseEntity.ok(userProfileService.getProfile(userId));
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
@@ -64,7 +64,7 @@ public class UserProfileController {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 		}
 		try {
-			UUID userId = profileImageService.extractUserIdFromJwt(authorization);
+			UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
 			return ResponseEntity.ok(userProfileService.updateProfile(userId, req));
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
