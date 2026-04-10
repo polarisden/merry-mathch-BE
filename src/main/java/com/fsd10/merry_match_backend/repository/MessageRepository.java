@@ -28,4 +28,7 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
           + "AND (mt.user1Id = :uid OR mt.user2Id = :uid) "
           + "AND m.senderId <> :uid AND m.isRead = false")
   long countUnreadForUser(@Param("uid") UUID userId);
+
+  /** Incoming messages for {@code roomId} not yet read by the current user ({@code readerId}). */
+  long countByChatRoomIdAndSenderIdNotAndIsReadFalse(UUID chatRoomId, UUID readerId);
 }

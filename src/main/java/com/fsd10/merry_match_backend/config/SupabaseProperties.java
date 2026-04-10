@@ -6,6 +6,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record SupabaseProperties(
 		String url,
 		String bucket,
-		String apiKey
+		/**
+		 * Service role key used for server-to-server calls (storage sign URL, admin ops).
+		 * Do not expose to frontend.
+		 */
+		String apiKey,
+		/** Signed URL TTL for chat images (seconds). */
+		Long chatImageSignTtlSeconds
 ) {
 }

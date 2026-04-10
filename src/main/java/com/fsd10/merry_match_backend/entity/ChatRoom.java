@@ -31,6 +31,18 @@ public class ChatRoom {
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;
 
+  @Column(name = "last_message_text", columnDefinition = "TEXT")
+  private String lastMessageText;
+
+  @Column(name = "last_message_type", length = 32)
+  private String lastMessageType;
+
+  @Column(name = "last_message_at")
+  private Instant lastMessageAt;
+
+  @Column(name = "last_sender_id", columnDefinition = "uuid")
+  private UUID lastSenderId;
+
   @PrePersist
   void onCreate() {
     if (this.createdAt == null) {

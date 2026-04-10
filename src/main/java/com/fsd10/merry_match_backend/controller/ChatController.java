@@ -4,6 +4,8 @@ import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.dto.ChatImageUploadResponse;
 import com.fsd10.merry_match_backend.dto.ChatMessageResponse;
 import com.fsd10.merry_match_backend.dto.ChatPeerResponse;
+import com.fsd10.merry_match_backend.dto.ChatRoomListItem;
+import com.fsd10.merry_match_backend.dto.PatchChatRoomLastMessageRequest;
 import com.fsd10.merry_match_backend.dto.SendChatMessageRequest;
 import com.fsd10.merry_match_backend.dto.SendChatMessageResponse;
 import com.fsd10.merry_match_backend.dto.UnreadSummaryResponse;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,6 +35,31 @@ public class ChatController {
 
   private final ChatService chatService;
   private final SupabaseJwtService supabaseJwtService;
+
+  @GetMapping("/matches/{matchId}/rooms")
+  public ResponseEntity<List<ChatRoomListItem>> listRoomsForMatch(
+      @RequestHeader(name = "Authorization", required = false) String authorization,
+      @PathVariable UUID matchId) {
+    UUID userId = requireUser(authorization);
+    return ResponseEntity.ok(chatService.listRoomsForMatch(matchId, userId));
+  }
+
+  @GetMapping("/rooms")
+  public ResponseEntity<List<ChatRoomListItem>> listRoomsForCurrentUser(
+      @RequestHeader(name = "Authorization", required = false) String authorization) {
+    UUID userId = requireUser(authorization);
+    return ResponseEntity.ok(chatService.listRoomsForCurrentUser(userId));
+  }
+
+  @PatchMapping("/rooms/{chatRoomId}/last-message")
+  public ResponseEntity<Void> patchRoomLastMessage(
+      @RequestHeader(name = "Authorization", required = false) String authorization,
+      @PathVariable UUID chatRoomId,
+      @RequestBody PatchChatRoomLastMessageRequest body) {
+    UUID userId = requireUser(authorization);
+    chatService.patchRoomLastMessage(chatRoomId, userId, body);
+    return ResponseEntity.noContent().build();
+  }
 
   @GetMapping("/rooms/{chatRoomId}/peer")
   public ResponseEntity<ChatPeerResponse> getPeer(

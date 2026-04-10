@@ -3,6 +3,8 @@ package com.fsd10.merry_match_backend.service;
 import com.fsd10.merry_match_backend.dto.ChatImageUploadResponse;
 import com.fsd10.merry_match_backend.dto.ChatMessageResponse;
 import com.fsd10.merry_match_backend.dto.ChatPeerResponse;
+import com.fsd10.merry_match_backend.dto.ChatRoomListItem;
+import com.fsd10.merry_match_backend.dto.PatchChatRoomLastMessageRequest;
 import com.fsd10.merry_match_backend.dto.SendChatMessageRequest;
 import com.fsd10.merry_match_backend.dto.SendChatMessageResponse;
 import com.fsd10.merry_match_backend.dto.UnreadSummaryResponse;
@@ -25,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -50,6 +53,62 @@ public class ChatService {
 
   @Value("${supabase.chat-image-sign-ttl-seconds:604800}")
   private long chatImageSignTtlSeconds;
+
+  /** All chat rooms the user participates in (any match), newest activity first. */
+  @Transactional(readOnly = true)
+  public List<ChatRoomListItem> listRoomsForCurrentUser(UUID currentUserId) {
+    return chatRoomRepository.findByParticipantUserId(currentUserId).stream()
+        .sorted(
+            Comparator.comparing(
+                    (ChatRoom c) ->
+                        c.getLastMessageAt() != null ? c.getLastMessageAt() : c.getCreatedAt())
+                .reversed())
+        .map(c -> toRoomListItem(c, currentUserId))
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<ChatRoomListItem> listRoomsForMatch(UUID matchId, UUID currentUserId) {
+    Match match =
+        matchRepository
+            .findById(matchId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Match not found"));
+    if (!match.getUser1Id().equals(currentUserId) && !match.getUser2Id().equals(currentUserId)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not a participant in this match");
+    }
+    return chatRoomRepository.findByMatchIdAndParticipant(matchId, currentUserId).stream()
+        .map(c -> toRoomListItem(c, currentUserId))
+        .toList();
+  }
+
+  @Transactional
+  public void patchRoomLastMessage(UUID chatRoomId, UUID userId, PatchChatRoomLastMessageRequest req) {
+    assertParticipant(chatRoomId, userId);
+    if (req.getLastMessageType() == null || req.getLastMessageType().isBlank()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "last_message_type is required");
+    }
+    if (req.getLastMessageAt() == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "last_message_at is required");
+    }
+    if (req.getLastSenderId() == null || !req.getLastSenderId().equals(userId)) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "last_sender_id must match the authenticated user");
+    }
+    String type = normalizeType(req.getLastMessageType());
+    if (type == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "last_message_type must be text or image");
+    }
+
+    ChatRoom room =
+        chatRoomRepository
+            .findById(chatRoomId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat room not found"));
+    room.setLastMessageText(blankToNull(req.getLastMessageText()));
+    room.setLastMessageType(type);
+    room.setLastMessageAt(req.getLastMessageAt());
+    room.setLastSenderId(req.getLastSenderId());
+    chatRoomRepository.save(room);
+  }
 
   @Transactional(readOnly = true)
   public List<ChatMessageResponse> listMessages(UUID chatRoomId, UUID currentUserId) {
@@ -120,6 +179,13 @@ public class ChatService {
                 .isRead(false)
                 .createdAt(Instant.now())
                 .build());
+
+    ChatRoom room =
+        chatRoomRepository
+            .findById(chatRoomId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat room not found"));
+    applyLastMessageSnapshot(room, saved);
+    chatRoomRepository.save(room);
 
     return SendChatMessageResponse.builder().message(toResponse(saved)).build();
   }
@@ -194,6 +260,58 @@ public class ChatService {
 
   private void assertParticipant(UUID chatRoomId, UUID userId) {
     resolveMatchForRoom(chatRoomId, userId);
+  }
+
+  private void applyLastMessageSnapshot(ChatRoom room, Message saved) {
+    String preview;
+    if ("image".equals(saved.getMessageType())) {
+      if (saved.getMessageText() != null && !saved.getMessageText().isBlank()) {
+        preview = saved.getMessageText();
+      } else {
+        preview = "Photo";
+      }
+    } else {
+      preview = saved.getMessageText();
+    }
+    room.setLastMessageText(preview);
+    room.setLastMessageType(saved.getMessageType());
+    room.setLastMessageAt(saved.getCreatedAt());
+    room.setLastSenderId(saved.getSenderId());
+  }
+
+  private ChatRoomListItem toRoomListItem(ChatRoom c, UUID currentUserId) {
+    Match match =
+        matchRepository
+            .findById(c.getMatchId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Match not found"));
+    UUID peerId =
+        match.getUser1Id().equals(currentUserId) ? match.getUser2Id() : match.getUser1Id();
+
+    User peer =
+        userRepository
+            .findById(peerId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Peer user not found"));
+
+    String peerImageUrl = null;
+    List<ProfileImage> asc = profileImageRepository.findByUserIdOrderByCreatedAtAsc(peerId);
+    if (!asc.isEmpty()) {
+      peerImageUrl = asc.get(0).getImageUrl();
+    }
+
+    long unread =
+        messageRepository.countByChatRoomIdAndSenderIdNotAndIsReadFalse(c.getId(), currentUserId);
+
+    return new ChatRoomListItem(
+        c.getId(),
+        c.getMatchId(),
+        c.getCreatedAt(),
+        c.getLastMessageText(),
+        c.getLastMessageType(),
+        c.getLastMessageAt(),
+        c.getLastSenderId(),
+        peer.getName() != null ? peer.getName() : "",
+        peerImageUrl,
+        unread);
   }
 
   private static String normalizeType(String raw) {
