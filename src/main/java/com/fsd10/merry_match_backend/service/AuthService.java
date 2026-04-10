@@ -10,7 +10,6 @@ import com.fsd10.merry_match_backend.exception.EmailAlreadyUsedException;
 import com.fsd10.merry_match_backend.exception.LoginFailedException;
 import com.fsd10.merry_match_backend.exception.RegisterFailedException;
 import com.fsd10.merry_match_backend.exception.UsernameAlreadyUsedException;
-import com.fsd10.merry_match_backend.repository.ProfileImageRepository;
 import com.fsd10.merry_match_backend.repository.UserInterestRepository;
 import com.fsd10.merry_match_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;

@@ -13,6 +13,9 @@ public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID
 
   List<ProfileImage> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+  /** Oldest upload first (first photo from register / earliest profile upload). */
+  List<ProfileImage> findByUserIdOrderByCreatedAtAsc(UUID userId);
+
   @Modifying
   @Query("update ProfileImage p set p.isPrimary = false where p.userId = :userId")
   void clearPrimaryByUserId(@Param("userId") UUID userId);

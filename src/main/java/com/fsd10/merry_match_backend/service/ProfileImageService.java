@@ -12,6 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -29,6 +32,8 @@ import java.util.UUID;
 @Slf4j
 public class ProfileImageService {
 
+  private static final ObjectMapper JSON = new ObjectMapper();
+
   private final ProfileImageRepository profileImageRepository;
   private final UserRepository userRepository;
 
@@ -42,8 +47,126 @@ public class ProfileImageService {
   private String supabaseApiKey;
 
   /**
-   * Used by standalone profile image upload endpoint (multipart/form-data).
+   * Uploads to the default profile bucket at {@code objectName}. Returns the public URL.
    */
+  public String uploadPublicObject(String objectName, MultipartFile file) {
+    return uploadPublicObjectToBucket(supabaseBucket, objectName, file);
+  }
+
+  /**
+   * Upload to an arbitrary public bucket (e.g. {@code chat-images} for chat).
+   */
+  public String uploadPublicObjectToBucket(String bucketName, String objectName, MultipartFile file) {
+    if (bucketName == null || bucketName.isBlank()) {
+      throw new IllegalArgumentException("Bucket name is required");
+    }
+    if (file == null || file.isEmpty()) {
+      throw new IllegalArgumentException("File is required");
+    }
+    String contentType = file.getContentType();
+    if (contentType != null && !contentType.startsWith("image/")) {
+      throw new IllegalArgumentException("Only image upload is allowed");
+    }
+    String restBaseUrl = resolveSupabaseRestBaseUrl(supabaseUrl);
+    String uploadUrl = restBaseUrl + "/storage/v1/object/" + bucketName + "/" + objectName;
+    uploadToSupabase(uploadUrl, contentType, file, supabaseApiKey);
+    return restBaseUrl + "/storage/v1/object/public/" + bucketName + "/" + objectName;
+  }
+
+  /**
+   * Creates a time-limited URL to read an object (works when the bucket is not public).
+   *
+   * @param objectPath path inside the bucket, e.g. {@code rooms/<roomId>/<file>.png}
+   */
+  public String createSignedUrlForObject(String bucket, String objectPath, long expiresInSeconds) {
+    if (bucket == null || bucket.isBlank() || objectPath == null || objectPath.isBlank()) {
+      throw new IllegalArgumentException("Bucket and object path are required");
+    }
+    String restBase = resolveSupabaseRestBaseUrl(supabaseUrl).replaceAll("/+$", "");
+    String normalizedPath = objectPath.replaceAll("^/+", "");
+    String signUrl = restBase + "/storage/v1/object/sign/" + bucket + "/" + normalizedPath;
+
+    String jsonBody = "{\"expiresIn\":" + expiresInSeconds + "}";
+    HttpClient client = HttpClient.newHttpClient();
+    HttpRequest request =
+        HttpRequest.newBuilder()
+            .uri(URI.create(signUrl))
+            .header("Authorization", "Bearer " + supabaseApiKey)
+            .header("apikey", supabaseApiKey)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+            .build();
+
+    try {
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        log.error(
+            "Supabase sign URL failed: status={}, url={}, body={}",
+            response.statusCode(),
+            signUrl,
+            truncateForLog(response.body()));
+        throw new IllegalStateException("Supabase sign URL failed with status: " + response.statusCode());
+      }
+      JsonNode root = JSON.readTree(response.body());
+      String rel = root.path("signedURL").asString(null);
+      if (rel == null || rel.isBlank()) {
+        rel = root.path("signedUrl").asString(null);
+      }
+      if (rel == null || rel.isBlank()) {
+        throw new IllegalStateException("Supabase sign response missing signedURL");
+      }
+      if (rel.startsWith("http://") || rel.startsWith("https://")) {
+        return rel;
+      }
+      if (rel.startsWith("/")) {
+        // Supabase may return a path starting with "/object/sign/..." (missing "/storage/v1").
+        // Normalize to a fetchable URL.
+        if (rel.startsWith("/object/")) {
+          return restBase + "/storage/v1" + rel;
+        }
+        return restBase + rel;
+      }
+      if (rel.startsWith("object/")) {
+        return restBase + "/storage/v1/" + rel;
+      }
+      return restBase + "/" + rel;
+    } catch (IOException | InterruptedException e) {
+      throw new IllegalStateException("Supabase sign URL error", e);
+    }
+  }
+
+  /**
+   * If {@code url} is a {@code /object/public/{bucket}/...} URL, return a fresh signed URL; otherwise
+   * return {@code url} unchanged (e.g. already signed).
+   */
+  public String refreshToSignedUrlIfPublicChatPath(String bucket, String url, long expiresInSeconds) {
+    if (url == null || url.isBlank() || bucket == null || bucket.isBlank()) {
+      return url;
+    }
+    if (url.contains("/object/sign/") || url.contains("token=")) {
+      return url;
+    }
+    Optional<String> path = extractObjectPathFromPublicBucketUrl(bucket, url);
+    if (path.isEmpty()) {
+      return url;
+    }
+    try {
+      return createSignedUrlForObject(bucket, path.get(), expiresInSeconds);
+    } catch (Exception e) {
+      log.warn("Could not refresh signed URL for chat image: {}", e.getMessage());
+      return url;
+    }
+  }
+
+  private Optional<String> extractObjectPathFromPublicBucketUrl(String bucket, String publicUrl) {
+    String marker = "/object/public/" + bucket + "/";
+    int i = publicUrl.indexOf(marker);
+    if (i >= 0) {
+      return Optional.of(publicUrl.substring(i + marker.length()));
+    }
+    return Optional.empty();
+  }
+
   public ProfileImageUploadResponse uploadForUser(UUID userId, MultipartFile file, boolean isPrimary) {
     if (file == null || file.isEmpty()) {
       throw new IllegalArgumentException("File is required");
