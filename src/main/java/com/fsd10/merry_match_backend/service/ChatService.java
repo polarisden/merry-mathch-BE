@@ -82,6 +82,35 @@ public class ChatService {
   }
 
   @Transactional
+  public ChatRoomListItem openOrCreateRoomWithPeer(UUID currentUserId, UUID peerUserId) {
+    if (currentUserId.equals(peerUserId)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot open chat with yourself");
+    }
+
+    userRepository
+        .findById(peerUserId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Peer user not found"));
+
+    Match match =
+        matchRepository
+            .findLatestMatchedOrActivePair(currentUserId, peerUserId)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "You can chat only with your matched user"));
+
+    ChatRoom room =
+        chatRoomRepository
+            .findFirstByMatchIdOrderByCreatedAtAsc(match.getId())
+            .orElseGet(
+                () ->
+                    chatRoomRepository.save(
+                        ChatRoom.builder().id(UUID.randomUUID()).matchId(match.getId()).build()));
+
+    return toRoomListItem(room, currentUserId);
+  }
+
+  @Transactional
   public void patchRoomLastMessage(UUID chatRoomId, UUID userId, PatchChatRoomLastMessageRequest req) {
     assertParticipant(chatRoomId, userId);
     if (req.getLastMessageType() == null || req.getLastMessageType().isBlank()) {

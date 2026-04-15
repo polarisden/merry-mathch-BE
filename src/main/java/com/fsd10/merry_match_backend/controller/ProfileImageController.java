@@ -54,6 +54,13 @@ public class ProfileImageController {
     }
   }
 
+  @GetMapping("/users/{userId}/profile-images")
+  public ResponseEntity<List<ProfileImageUploadResponse>> listImagesByUserId(
+      @PathVariable UUID userId
+  ) {
+    return ResponseEntity.ok(profileImageService.listForUser(userId));
+  }
+
   @DeleteMapping("/users/me/profile-images/{imageId}")
   public ResponseEntity<Void> deleteMyImage(
       @RequestHeader(name = "Authorization", required = false) String authorization,
