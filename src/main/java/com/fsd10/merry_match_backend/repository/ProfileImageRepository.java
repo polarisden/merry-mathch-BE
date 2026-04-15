@@ -11,6 +11,11 @@ import java.util.UUID;
 
 public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID> {
 
+  interface UserImageView {
+    UUID getUserId();
+    String getImageUrl();
+  }
+
   List<ProfileImage> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
   /** Oldest upload first (first photo from register / earliest profile upload). */
@@ -25,5 +30,15 @@ public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query("delete from ProfileImage p where p.userId = :userId")
   int deleteAllByUserId(@Param("userId") UUID userId);
+
+  @Query(value = """
+      select distinct on (p.user_id)
+        p.user_id as userId,
+        p.image_url as imageUrl
+      from profile_images p
+      where p.user_id in (:userIds)
+      order by p.user_id, p.created_at asc
+      """, nativeQuery = true)
+  List<UserImageView> findFirstImageByUserIds(@Param("userIds") List<UUID> userIds);
 }
 

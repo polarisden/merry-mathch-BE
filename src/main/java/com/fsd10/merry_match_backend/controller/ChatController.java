@@ -51,6 +51,14 @@ public class ChatController {
     return ResponseEntity.ok(chatService.listRoomsForCurrentUser(userId));
   }
 
+  @PostMapping("/with/{peerUserId}/room")
+  public ResponseEntity<ChatRoomListItem> openOrCreateRoomWithPeer(
+      @RequestHeader(name = "Authorization", required = false) String authorization,
+      @PathVariable UUID peerUserId) {
+    UUID userId = requireUser(authorization);
+    return ResponseEntity.ok(chatService.openOrCreateRoomWithPeer(userId, peerUserId));
+  }
+
   @PatchMapping("/rooms/{chatRoomId}/last-message")
   public ResponseEntity<Void> patchRoomLastMessage(
       @RequestHeader(name = "Authorization", required = false) String authorization,
