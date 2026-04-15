@@ -1,6 +1,7 @@
 package com.fsd10.merry_match_backend.service;
 
 import com.fsd10.merry_match_backend.dto.ProfileImageUploadResponse;
+import com.fsd10.merry_match_backend.dto.UserPictureResponse;
 import com.fsd10.merry_match_backend.entity.ProfileImage;
 import com.fsd10.merry_match_backend.repository.ProfileImageRepository;
 import com.fsd10.merry_match_backend.repository.UserRepository;
@@ -212,6 +213,15 @@ public class ProfileImageService {
         .isPrimary(saved.isPrimary())
         .createdAt(saved.getCreatedAt())
         .build();
+  }
+
+  @Transactional(readOnly = true)
+  public UserPictureResponse getUserPicture(UUID userId) {
+    String url = profileImageRepository
+        .findFirstByUserIdAndIsPrimaryTrueOrderByCreatedAtAsc(userId)
+        .map(ProfileImage::getImageUrl)
+        .orElse(null);
+    return new UserPictureResponse(url);
   }
 
   @Transactional(readOnly = true)

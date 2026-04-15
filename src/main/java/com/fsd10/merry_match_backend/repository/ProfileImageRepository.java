@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID> {
@@ -15,6 +16,8 @@ public interface ProfileImageRepository extends JpaRepository<ProfileImage, UUID
 
   /** Oldest upload first (first photo from register / earliest profile upload). */
   List<ProfileImage> findByUserIdOrderByCreatedAtAsc(UUID userId);
+
+  Optional<ProfileImage> findFirstByUserIdAndIsPrimaryTrueOrderByCreatedAtAsc(UUID userId);
 
   @Modifying
   @Query("update ProfileImage p set p.isPrimary = false where p.userId = :userId")

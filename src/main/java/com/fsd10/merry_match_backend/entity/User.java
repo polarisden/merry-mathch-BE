@@ -68,6 +68,9 @@ public class User {
 	@Column(nullable = false)
 	private String role;
 
+	@Column(name = "merry_count")
+	private Integer merryCount;
+
 	@PrePersist
 	void onCreate() {
 		Instant now = Instant.now();

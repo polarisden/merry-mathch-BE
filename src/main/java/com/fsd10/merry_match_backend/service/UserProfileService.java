@@ -1,5 +1,7 @@
 package com.fsd10.merry_match_backend.service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -12,11 +14,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.fsd10.merry_match_backend.dto.InterestResponse;
 import com.fsd10.merry_match_backend.dto.UpdateUserProfileRequest;
+import com.fsd10.merry_match_backend.dto.UserDataResponse;
 import com.fsd10.merry_match_backend.dto.UserProfileResponse;
 import com.fsd10.merry_match_backend.entity.Interest;
 import com.fsd10.merry_match_backend.entity.User;
 import com.fsd10.merry_match_backend.entity.UserInterest;
 import com.fsd10.merry_match_backend.repository.InterestRepository;
+import com.fsd10.merry_match_backend.repository.ProfileImageRepository;
 import com.fsd10.merry_match_backend.repository.UserInterestRepository;
 import com.fsd10.merry_match_backend.repository.UserRepository;
 
@@ -29,6 +33,7 @@ public class UserProfileService {
 	private final UserRepository userRepository;
 	private final InterestRepository interestRepository;
 	private final UserInterestRepository userInterestRepository;
+	private final ProfileImageRepository profileImageRepository;
 
 	@Transactional(readOnly = true)
 	public UserProfileResponse getProfile(UUID userId) {
@@ -62,6 +67,33 @@ public class UserProfileService {
 		}
 
 		return toResponse(user, interests);
+	}
+
+	@Transactional(readOnly = true)
+	public List<UserDataResponse> getAllUserData() {
+		var primaryImages = profileImageRepository.findAll().stream()
+				.filter(img -> img.isPrimary())
+				.collect(Collectors.toMap(img -> img.getUserId(), img -> img.getImageUrl(),
+						(first, second) -> first));
+
+		return userRepository.findAll().stream()
+				.map(user -> {
+					Integer age = user.getDateOfBirth() != null
+							? Period.between(user.getDateOfBirth(), LocalDate.now()).getYears()
+							: null;
+					String mainImage = primaryImages.get(user.getId());
+					return new UserDataResponse(
+							user.getId(),
+							user.getName(),
+							age,
+							user.getLocationCity(),
+							user.getLocationCountry(),
+							mainImage,
+							user.getGender(),
+							user.getSexualPreference()
+					);
+				})
+				.toList();
 	}
 
 	@Transactional(readOnly = true)

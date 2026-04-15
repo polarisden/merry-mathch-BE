@@ -1,6 +1,7 @@
 package com.fsd10.merry_match_backend.controller;
 
 import com.fsd10.merry_match_backend.dto.ProfileImageUploadResponse;
+import com.fsd10.merry_match_backend.dto.UserPictureResponse;
 import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.service.ProfileImageService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,11 @@ public class ProfileImageController {
 
   private final ProfileImageService profileImageService;
   private final SupabaseJwtService supabaseJwtService;
+
+  @GetMapping("/users/{userId}/picture")
+  public ResponseEntity<UserPictureResponse> getUserPicture(@PathVariable UUID userId) {
+    return ResponseEntity.ok(profileImageService.getUserPicture(userId));
+  }
 
   @PostMapping("/users/me/profile-images")
   public ResponseEntity<ProfileImageUploadResponse> upload(

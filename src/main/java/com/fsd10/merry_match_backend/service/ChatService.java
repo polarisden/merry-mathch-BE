@@ -54,6 +54,20 @@ public class ChatService {
   @Value("${supabase.chat-image-sign-ttl-seconds:604800}")
   private long chatImageSignTtlSeconds;
 
+  @Transactional(readOnly = true)
+  public List<UUID> getChatRoomIdsByUserId(UUID userId) {
+    return chatRoomRepository.findChatRoomIdsByUserId(userId);
+  }
+
+  @Transactional(readOnly = true)
+  public UUID getChatRoomIdByBothUsers(UUID swiperId, UUID swipedId) {
+    Match match = matchRepository.findByBothUsers(swiperId, swipedId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Match not found"));
+    ChatRoom chatRoom = chatRoomRepository.findByMatchId(match.getId())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat room not found"));
+    return chatRoom.getId();
+  }
+
   /** All chat rooms the user participates in (any match), newest activity first. */
   @Transactional(readOnly = true)
   public List<ChatRoomListItem> listRoomsForCurrentUser(UUID currentUserId) {

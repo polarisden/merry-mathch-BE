@@ -1,5 +1,6 @@
 package com.fsd10.merry_match_backend.controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fsd10.merry_match_backend.dto.UpdateUserProfileRequest;
+import com.fsd10.merry_match_backend.dto.UserDataResponse;
 import com.fsd10.merry_match_backend.dto.UserProfileResponse;
 import com.fsd10.merry_match_backend.auth.SupabaseJwtService;
 import com.fsd10.merry_match_backend.service.UserProfileService;
@@ -26,6 +28,11 @@ public class UserProfileController {
 
 	private final UserProfileService userProfileService;
 	private final SupabaseJwtService supabaseJwtService;
+
+	@GetMapping("/users")
+	public ResponseEntity<List<UserDataResponse>> getAllUserData() {
+		return ResponseEntity.ok(userProfileService.getAllUserData());
+	}
 
 	@GetMapping("/users/{userId}/profile")
 	public ResponseEntity<UserProfileResponse> getProfile(@PathVariable UUID userId) {
