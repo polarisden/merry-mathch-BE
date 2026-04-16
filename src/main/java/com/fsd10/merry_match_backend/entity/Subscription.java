@@ -15,8 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.hibernate.annotations.JdbcType;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -53,8 +52,8 @@ public class Subscription {
     private LocalDateTime scheduledPlanChangeAt;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(nullable = false)
+    @JdbcType(SubscriptionStatusPostgreSqlJdbcType.class)
+    @Column(name = "status", nullable = false, columnDefinition = "subscription_status")
     @Builder.Default
     private SubscriptionStatus status = SubscriptionStatus.ACTIVE;
 

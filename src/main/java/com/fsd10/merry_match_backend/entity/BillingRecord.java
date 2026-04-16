@@ -15,8 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.hibernate.annotations.JdbcType;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -51,8 +50,8 @@ public class BillingRecord {
     private Integer amountSatang;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(nullable = false)
+    @JdbcType(BillingStatusPostgreSqlJdbcType.class)
+    @Column(name = "status", nullable = false, columnDefinition = "billing_status")
     private BillingStatus status;
 
     @Column(name = "omise_charge_id", unique = true)
