@@ -27,4 +27,6 @@ public interface ChatRoomRepository extends JpaRepository<ChatRoom, UUID> {
   List<UUID> findChatRoomIdsByUserId(@Param("uid") UUID userId);
 
   Optional<ChatRoom> findByMatchId(UUID matchId);
+
+  Optional<ChatRoom> findFirstByMatchIdOrderByCreatedAtAsc(UUID matchId);
 }
