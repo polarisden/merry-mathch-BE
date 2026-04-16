@@ -13,9 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.fsd10.merry_match_backend.dto.InterestResponse;
+import com.fsd10.merry_match_backend.dto.ProfileImageUploadResponse;
 import com.fsd10.merry_match_backend.dto.UpdateUserProfileRequest;
 import com.fsd10.merry_match_backend.dto.UserDataResponse;
 import com.fsd10.merry_match_backend.dto.UserProfileResponse;
+import com.fsd10.merry_match_backend.entity.ProfileImage;
 import com.fsd10.merry_match_backend.entity.Interest;
 import com.fsd10.merry_match_backend.entity.User;
 import com.fsd10.merry_match_backend.entity.UserInterest;
@@ -45,7 +47,11 @@ public class UserProfileService {
 				.map(i -> new InterestResponse(i.getId(), i.getName()))
 				.toList();
 
-		return toResponse(user, interests);
+		var images = profileImageRepository.findByUserIdOrderByCreatedAtAsc(userId).stream()
+				.map(UserProfileService::toImageResponse)
+				.toList();
+
+		return toResponse(user, interests, images);
 	}
 
 	@Transactional
@@ -66,7 +72,11 @@ public class UserProfileService {
 					.toList();
 		}
 
-		return toResponse(user, interests);
+		var images = profileImageRepository.findByUserIdOrderByCreatedAtAsc(userId).stream()
+				.map(UserProfileService::toImageResponse)
+				.toList();
+
+		return toResponse(user, interests, images);
 	}
 
 	@Transactional(readOnly = true)
@@ -142,7 +152,17 @@ public class UserProfileService {
 				.toList();
 	}
 
-	private static UserProfileResponse toResponse(User user, List<InterestResponse> interests) {
+	private static ProfileImageUploadResponse toImageResponse(ProfileImage img) {
+		return ProfileImageUploadResponse.builder()
+				.id(img.getId())
+				.userId(img.getUserId())
+				.imageUrl(img.getImageUrl())
+				.isPrimary(img.isPrimary())
+				.createdAt(img.getCreatedAt())
+				.build();
+	}
+
+	private static UserProfileResponse toResponse(User user, List<InterestResponse> interests, List<ProfileImageUploadResponse> images) {
 		return new UserProfileResponse(
 				user.getId(),
 				user.getEmail(),
@@ -159,7 +179,9 @@ public class UserProfileService {
 				user.getRole(),
 				user.getCreatedAt(),
 				user.getUpdatedAt(),
-				interests
+				interests,
+				user.getMerryCount(),
+				images
 		);
 	}
 }

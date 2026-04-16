@@ -21,6 +21,8 @@ public record UserProfileResponse(
 		String role,
 		Instant createdAt,
 		Instant updatedAt,
-		List<InterestResponse> interests
+		List<InterestResponse> interests,
+		Integer merryCount,
+		List<ProfileImageUploadResponse> images
 ) {}
 
