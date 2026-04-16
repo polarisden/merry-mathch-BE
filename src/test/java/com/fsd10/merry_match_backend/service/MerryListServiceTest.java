@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +71,11 @@ class MerryListServiceTest {
       @Override
       public String getStatus() {
         return "active";
+      }
+
+      @Override
+      public Instant getMatchedAt() {
+        return Instant.now();
       }
     };
     when(matchRepository.findPeerMatchStatusesForCurrentUser(currentUserId, List.of(targetId)))
