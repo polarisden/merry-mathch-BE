@@ -9,9 +9,11 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -46,6 +48,10 @@ public class ProfileImageService {
 
   @Value("${supabase.apiKey}")
   private String supabaseApiKey;
+
+  /** Max decoded image bytes per profile photo (register + upload). Default 5 MiB — under common API/storage limits. */
+  @Value("${merry.profile-photo.max-bytes:5242880}")
+  private int profilePhotoMaxBytes;
 
   /**
    * Uploads to the default profile bucket at {@code objectName}. Returns the public URL.
@@ -308,6 +314,8 @@ public class ProfileImageService {
         continue;
       }
 
+      assertProfilePhotoSize(parsed.bytes);
+
       UUID imageId = UUID.randomUUID();
       String extension = parsed.extension != null ? parsed.extension : "png";
       String objectName = "users/" + userId + "/" + imageId + "." + extension;
@@ -374,7 +382,19 @@ public class ProfileImageService {
     } catch (IOException e) {
       throw new IllegalArgumentException("Cannot read uploaded file", e);
     }
+    assertProfilePhotoSize(bytes);
     uploadBytesToSupabase(uploadUrl, contentType, bytes, apiKey);
+  }
+
+  private void assertProfilePhotoSize(byte[] bytes) {
+    if (bytes == null || bytes.length <= profilePhotoMaxBytes) {
+      return;
+    }
+    int maxMb = Math.max(1, profilePhotoMaxBytes / (1024 * 1024));
+    throw new ResponseStatusException(
+        HttpStatusCode.valueOf(413),
+        "Profile image is too large (" + bytes.length + " bytes). Maximum is " + profilePhotoMaxBytes
+            + " bytes (~" + maxMb + " MiB). Send a smaller or more compressed image.");
   }
 
   private void uploadBytesToSupabase(String uploadUrl, String contentType, byte[] bytes, String apiKey) {
@@ -393,11 +413,28 @@ public class ProfileImageService {
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() < 200 || response.statusCode() >= 300) {
         log.error("Supabase upload failed: status={}, body={}", response.statusCode(), response.body());
+        if (isPayloadTooLargeResponse(response)) {
+          throw new ResponseStatusException(
+              HttpStatusCode.valueOf(413),
+              "Storage rejected the image as too large. Try a smaller file or increase merry.profile-photo.max-bytes if your project allows it.");
+        }
         throw new IllegalStateException("Supabase upload failed with status: " + response.statusCode());
       }
     } catch (IOException | InterruptedException e) {
       throw new IllegalStateException("Supabase upload error", e);
     }
+  }
+
+  private static boolean isPayloadTooLargeResponse(HttpResponse<String> response) {
+    int code = response.statusCode();
+    if (code == 413) {
+      return true;
+    }
+    String body = response.body();
+    if (code == 400 && body != null) {
+      return body.contains("Payload too large") || body.contains("\"413\"");
+    }
+    return false;
   }
 
   private void deleteObjectByPublicUrlIfPossible(String publicUrl) {
