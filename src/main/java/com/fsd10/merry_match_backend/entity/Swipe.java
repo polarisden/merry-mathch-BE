@@ -32,7 +32,7 @@ public class Swipe {
     @Column(name = "swiped_id", nullable = false, columnDefinition = "uuid")
     private java.util.UUID swipedId;
 
-    @Column(name = "action", nullable = false)
+    @Column(name = "action", nullable = false, columnDefinition = "text")
     private String action;
 
     @Column(name = "swiped_at", nullable = false)
