@@ -6,10 +6,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 import com.fsd10.merry_match_backend.config.ChatProperties;
 import com.fsd10.merry_match_backend.config.JwtProperties;
+import com.fsd10.merry_match_backend.config.OmiseProperties;
 import com.fsd10.merry_match_backend.config.SupabaseProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({ SupabaseProperties.class, JwtProperties.class, ChatProperties.class })
+@EnableConfigurationProperties({ SupabaseProperties.class, JwtProperties.class, ChatProperties.class, OmiseProperties.class })
 public class MerryMatchBackendApplication {
 
 	public static void main(String[] args) {

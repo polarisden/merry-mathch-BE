@@ -1,4 +1,4 @@
-package com.fsd10.merry_match_backend.config;
+ package com.fsd10.merry_match_backend.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
