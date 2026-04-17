@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fsd10.merry_match_backend.dto.plan.PlanDto;
 import com.fsd10.merry_match_backend.dto.subscription.PaymentCardDto;
+import com.fsd10.merry_match_backend.dto.subscription.PlanBankItemDto;
 import com.fsd10.merry_match_backend.dto.subscription.SubscriptionDetailDto;
 import com.fsd10.merry_match_backend.entity.Subscription;
 import com.fsd10.merry_match_backend.exception.SubscriptionNotFoundException;
@@ -22,6 +23,7 @@ public class SubscriptionReadService {
     private final SubscriptionRepository subscriptionRepository;
     private final PlansService plansService;
     private final SubscriptionLifecycleService subscriptionLifecycleService;
+    private final SubscriptionDayBankService subscriptionDayBankService;
 
     @Transactional(readOnly = true)
     public SubscriptionDetailDto getSubscriptionForUser(UUID subscriptionId, UUID userId) {
@@ -46,6 +48,17 @@ public class SubscriptionReadService {
         if (sub.getPendingPlan() != null) {
             pendingPlan = plansService.getPlanById(sub.getPendingPlan().getId());
         }
+        int currentPlanBankedDays = subscriptionDayBankService.getRemainingDays(
+                sub.getUser().getId(),
+                sub.getPlan().getId());
+        var bankedPlans = subscriptionDayBankService.listPositiveBanks(sub.getUser().getId()).stream()
+                .map(bank -> PlanBankItemDto.builder()
+                        .planId(bank.getPlan().getId())
+                        .planName(bank.getPlan().getName())
+                        .planPriceSatang(bank.getPlan().getPriceSatang())
+                        .remainingDays(bank.getRemainingDays())
+                        .build())
+                .toList();
         return SubscriptionDetailDto.builder()
                 .id(sub.getId())
                 .status(sub.getStatus().name())
@@ -60,6 +73,8 @@ public class SubscriptionReadService {
                 .paymentCard(PaymentCardDto.fromSubscription(sub))
                 .pendingPlan(pendingPlan)
                 .scheduledPlanChangeAt(sub.getScheduledPlanChangeAt())
+                .currentPlanBankedDays(currentPlanBankedDays)
+                .bankedPlans(bankedPlans)
                 .build();
     }
 }

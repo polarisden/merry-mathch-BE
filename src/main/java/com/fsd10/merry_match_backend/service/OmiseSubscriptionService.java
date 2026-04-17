@@ -67,6 +67,7 @@ public class OmiseSubscriptionService {
     private final PlansRepository plansRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final BillingAttemptService billingAttemptService;
+    private final SubscriptionDayBankService subscriptionDayBankService;
 
     public OmiseSubscriptionService(
             @Value("${subscription.billing.period:P30D}") Duration billingPeriod,
@@ -74,7 +75,8 @@ public class OmiseSubscriptionService {
             UserRepository userRepository,
             PlansRepository plansRepository,
             SubscriptionRepository subscriptionRepository,
-            BillingAttemptService billingAttemptService
+            BillingAttemptService billingAttemptService,
+            SubscriptionDayBankService subscriptionDayBankService
     ) {
         this.billingPeriod = billingPeriod;
         this.omiseClientProvider = omiseClientProvider;
@@ -82,6 +84,7 @@ public class OmiseSubscriptionService {
         this.plansRepository = plansRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.billingAttemptService = billingAttemptService;
+        this.subscriptionDayBankService = subscriptionDayBankService;
     }
 
     private Client omiseClient() {
@@ -521,7 +524,7 @@ public class OmiseSubscriptionService {
                             .customer(customerId)
                             .card(cardId)
                             .capture(true)
-                            .description("Plan upgrade (prorated): " + newPlan.getName())
+                            .description("Plan upgrade (full charge): " + newPlan.getName())
                             .metadata(META_USER_ID, userId.toString())
                             .metadata(META_PLAN_ID, newPlanId.toString())
                             .metadata(META_SUBSCRIPTION_ID, subscriptionId.toString())
@@ -621,14 +624,28 @@ public class OmiseSubscriptionService {
         Subscription sub = subscriptionRepository.findByIdAndUser_Id(subscriptionId, user.getId())
                 .orElseThrow(() -> new EntityNotFoundException("Subscription not found for upgrade"));
 
+        if (sub.getPlan() != null && newPlanId.equals(sub.getPlan().getId())) {
+            // Idempotency guard: already switched by earlier sync/API path.
+            return sub;
+        }
+
         String customerId = charge.getCustomer();
 
-        LocalDateTime periodStart = sub.getCurrentPeriodStart();
-        LocalDateTime periodEnd = sub.getCurrentPeriodEnd();
+        Plans oldPlan = sub.getPlan();
+        int bankedFromOldPlan = computeRemainingDaysCeil(LocalDateTime.now(BANGKOK), sub.getCurrentPeriodEnd());
+        if (oldPlan != null && bankedFromOldPlan > 0) {
+            subscriptionDayBankService.addDays(sub.getUser(), oldPlan, bankedFromOldPlan);
+        }
+
+        int restoredTargetDays = subscriptionDayBankService.consumeAllDays(sub.getUser(), newPlan);
+        LocalDateTime periodStart = LocalDateTime.now(BANGKOK);
+        LocalDateTime periodEnd = periodStart.plus(billingPeriod).plusDays(restoredTargetDays);
 
         sub.setPlan(newPlan);
         sub.setPendingPlan(null);
         sub.setScheduledPlanChangeAt(null);
+        sub.setCurrentPeriodStart(periodStart);
+        sub.setCurrentPeriodEnd(periodEnd);
         sub.setOmiseCustomerId(customerId);
         applyCardSnapshot(sub, charge);
         subscriptionRepository.save(sub);
@@ -648,6 +665,14 @@ public class OmiseSubscriptionService {
 
         syncOmiseCustomerDefaultCardFromCharge(customerId, charge);
         return sub;
+    }
+
+    private static int computeRemainingDaysCeil(LocalDateTime now, LocalDateTime periodEnd) {
+        if (periodEnd == null || !periodEnd.isAfter(now)) {
+            return 0;
+        }
+        long remainingSeconds = Duration.between(now, periodEnd).getSeconds();
+        return (int) Math.ceil(remainingSeconds / 86400.0d);
     }
 
     /**

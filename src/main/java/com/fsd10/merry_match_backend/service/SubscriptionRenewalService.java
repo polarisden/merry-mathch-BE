@@ -27,6 +27,7 @@ public class SubscriptionRenewalService {
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionLifecycleService subscriptionLifecycleService;
     private final OmiseSubscriptionService omiseSubscriptionService;
+    private final SubscriptionDayBankService subscriptionDayBankService;
 
     /**
      * ประมวลผลทุก subscription ที่เลยรอบบิลแล้ว (ACTIVE + current_period_end &lt;= now).
@@ -57,7 +58,19 @@ public class SubscriptionRenewalService {
             return;
         }
 
+        if (subscriptionLifecycleService.applyPendingPlanChangeIfDue(sub)) {
+            subscriptionRepository.save(sub);
+        }
+        sub = subscriptionRepository.findById(subscriptionId).orElseThrow();
+        if (sub.getCurrentPeriodEnd() != null && sub.getCurrentPeriodEnd().isAfter(now)) {
+            return;
+        }
+
         if (!Boolean.TRUE.equals(sub.getAutoRenew())) {
+            if (applyHighestBankPlanIfAvailable(sub, now)) {
+                subscriptionRepository.save(sub);
+                return;
+            }
             expireSubscription(sub);
             subscriptionRepository.save(sub);
             return;
@@ -70,12 +83,26 @@ public class SubscriptionRenewalService {
             return;
         }
 
-        if (subscriptionLifecycleService.applyPendingPlanChangeIfDue(sub)) {
-            subscriptionRepository.save(sub);
-        }
-        sub = subscriptionRepository.findById(subscriptionId).orElseThrow();
-
         omiseSubscriptionService.chargeRenewalAndFulfill(sub);
+    }
+
+    private boolean applyHighestBankPlanIfAvailable(Subscription sub, LocalDateTime now) {
+        var planOpt = subscriptionDayBankService.findHighestPricedBankPlan(sub.getUser().getId());
+        if (planOpt.isEmpty()) {
+            return false;
+        }
+        var bankPlan = planOpt.get();
+        int days = subscriptionDayBankService.consumeAllDays(sub.getUser(), bankPlan);
+        if (days <= 0) {
+            return false;
+        }
+        sub.setPlan(bankPlan);
+        sub.setPendingPlan(null);
+        sub.setScheduledPlanChangeAt(null);
+        sub.setStatus(Subscription.SubscriptionStatus.ACTIVE);
+        sub.setCurrentPeriodStart(now);
+        sub.setCurrentPeriodEnd(now.plusDays(days));
+        return true;
     }
 
     private static void expireSubscription(Subscription sub) {

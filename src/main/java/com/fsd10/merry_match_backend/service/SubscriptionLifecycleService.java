@@ -23,6 +23,7 @@ public class SubscriptionLifecycleService {
     private static final ZoneId BANGKOK = ZoneId.of("Asia/Bangkok");
 
     private final SubscriptionRepository subscriptionRepository;
+    private final SubscriptionDayBankService subscriptionDayBankService;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void applyPendingPlanChangesIfDue(java.util.UUID userId) {
@@ -48,6 +49,11 @@ public class SubscriptionLifecycleService {
             return false;
         }
         sub.setPlan(sub.getPendingPlan());
+        int pendingPlanBankDays = subscriptionDayBankService.consumeAllDays(sub.getUser(), sub.getPlan());
+        if (pendingPlanBankDays > 0) {
+            sub.setCurrentPeriodStart(now);
+            sub.setCurrentPeriodEnd(now.plusDays(pendingPlanBankDays));
+        }
         sub.setPendingPlan(null);
         sub.setScheduledPlanChangeAt(null);
         return true;

@@ -27,7 +27,7 @@ public class SubscriptionPlanChangeController {
     private final SubscriptionPlanChangeService subscriptionPlanChangeService;
     private final SupabaseJwtService supabaseJwtService;
 
-    /** ดูว่าเป็น upgrade / downgrade / เหมือนเดิม + ยอด prorate (upgrade) หรือวันที่จะเปลี่ยน (downgrade) */
+    /** Preview: upgrade is immediate/full-charge, downgrade is scheduled at period end. */
     @PostMapping("/preview")
     public ResponseEntity<PlanChangePreviewResponse> preview(
             @RequestHeader("Authorization") String authorization,
@@ -37,7 +37,7 @@ public class SubscriptionPlanChangeController {
         return ResponseEntity.ok(subscriptionPlanChangeService.preview(userId, request.planId()));
     }
 
-    /** Downgrade: ไม่เรียกเก็บเงินทันที — ตั้งแผนใหม่ให้มีผลสิ้นรอบบิลปัจจุบัน */
+    /** Downgrade: no charge now, apply at current period end (pending). */
     @PostMapping("/downgrade")
     public ResponseEntity<Void> scheduleDowngrade(
             @RequestHeader("Authorization") String authorization,
@@ -58,7 +58,7 @@ public class SubscriptionPlanChangeController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Upgrade: เรียกเก็บแบบ prorated ผ่าน Omise (token จาก Omise.js) */
+    /** Upgrade: switch immediately and charge full target plan price via Omise. */
     @PostMapping("/upgrade")
     public ResponseEntity<SubscriptionCheckoutResponse> confirmUpgrade(
             @RequestHeader("Authorization") String authorization,

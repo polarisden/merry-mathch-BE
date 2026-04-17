@@ -4,10 +4,10 @@
 
 | การกระทำ | การเงิน | เมื่อมีผล |
 |----------|---------|-----------|
-| **Upgrade** (แพงขึ้น) | เรียกเก็บ **แบบ prorated** ตามส่วนที่เหลือของรอบบิล (ขั้นต่ำ ~20 THB ถ้า prorate ต่ำกว่านั้นจะปัดขึ้น) | ทันทีหลังจ่ายสำเร็จ |
-| **Downgrade** (ถูกลง) | **ไม่เรียกเก็บ** ตอนกด | ณ **สิ้นรอบบิลปัจจุบัน** (`currentPeriodEnd`) |
+| **Upgrade** (แพงขึ้น) | เรียกเก็บ **ราคาเต็ม** ของแผนปลายทาง (สตางค์ตาม `chargeAmountSatang` ใน preview) | **ทันที** หลังจ่ายสำเร็จ — วันคงเหลือของแผนเดิมถูก **bank** ต่อแผนเดิม; ถ้ามี bank ของแผนปลายทางจะถูกนำไปต่อรอบบิล |
+| **Downgrade** (ถูกลง) | **ไม่เรียกเก็บ** ตอนกด | **สิ้นรอบบิลปัจจุบัน** (`currentPeriodEnd`) — เก็บเป็น pending จนกว่าจะถึงเวลา |
 
-- ก่อนแสดง membership ระบบจะย้ายแผน downgrade อัตโนมัติเมื่อเวลาถึง (เมื่อเรียก `GET /api/membership/current` หรือ `GET /api/subscriptions/{id}`).
+- ก่อนแสดง membership ระบบจะย้ายแผน downgrade ที่ถึงเวลาเมื่อเรียก `GET /api/membership/current` หรือ `GET /api/subscriptions/{id}` (lazy apply)
 
 ## API
 
@@ -28,9 +28,13 @@ Response 200 — `PlanChangePreviewResponse`:
 | `changeType` | `SAME` \| `UPGRADE` \| `DOWNGRADE` |
 | `currentPlanId` / `currentPlanName` | แผนปัจจุบัน |
 | `targetPlanId` / `targetPlanName` | แผนที่เลือก |
-| `proratedAmountSatang` | ยอดที่จะเรียกเก็บ (upgrade) เป็นสตางค์; `null` ถ้าไม่เกี่ยว |
-| `scheduledEffectiveAt` | วันที่ downgrade จะมีผล; `null` ถ้าไม่เกี่ยว |
+| `chargeAmountSatang` | ยอดที่จะเรียกเก็บเมื่อยืนยัน upgrade (ราคาเต็มแผนปลายทาง); `null` ถ้าไม่เกี่ยว |
+| `immediateEffective` | `true` เมื่อเปลี่ยนแผนทันทีหลังจ่าย (upgrade) |
+| `bankedDaysFromCurrentPlan` | วันที่จะถูกเก็บจากแผนปัจจุบันถ้ายืนยัน |
+| `bankedDaysAvailableOnTargetPlan` | วันที่สะสมไว้ของแผนปลายทาง (bank ของ plan นั้น) |
 | `description` | ข้อความอธิบายสั้น ๆ |
+
+> ไม่ใช้ `proratedAmountSatang` / `scheduledEffectiveAt` — ใช้ฟิลด์ด้านบนแทน
 
 ### 2. Schedule downgrade
 
@@ -56,14 +60,16 @@ Response: เหมือน `SubscriptionCheckoutResponse` (มี `status` pai
 
 ## Membership DTO เพิ่ม
 
-`GET /api/membership/current` — ใน `SubscriptionDetailDto` มีเพิ่ม:
+`GET /api/membership/current` — ใน `SubscriptionDetailDto`:
 
 | Field | ความหมาย |
 |-------|-----------|
 | `pendingPlan` | แผนที่จะสลับ (ถ้ามีการ schedule downgrade) — โครงสร้างเดียวกับ `plan` |
 | `scheduledPlanChangeAt` | เวลาที่จะสลับเป็น `pendingPlan` |
+| `currentPlanBankedDays` | จำนวนวันใน bank **ของแผนปัจจุบัน** |
+| `bankedPlans` | รายการ bank ทุกแผนที่มีวัน (รายการละ `planId`, `planName`, `planPriceSatang`, `remainingDays`) |
 
-## SQL (DBA / Supabase)
+## SQL (DBA / Supabase) — คอลัมน์ pending downgrade
 
 รันครั้งเดียวถ้ายังไม่มีคอลัมน์:
 
@@ -74,6 +80,8 @@ ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS scheduled_plan_change_at timestamp NULL;
 ```
 
+ตาราง `subscription_day_banks` — ดู DDL ใน `docs/subscription-day-bank-migration-notes.md`
+
 ## Prompt สำหรับทีม Frontend (คัดลอกได้)
 
 ```
@@ -81,11 +89,13 @@ ALTER TABLE public.subscriptions
 
 1) หน้าเลือกแผน: เรียก POST /api/subscriptions/plan-change/preview ด้วย planId ปลายทาง
    - ถ้า changeType === "SAME" แสดงว่าเป็นแผนเดียวกัน
-   - ถ้า "UPGRADE" แสดงยอด proratedAmountSatang (แสดงเป็นบาท: หาร 100) และปุ่มชำระด้วย Omise.js แล้วเรียก POST .../upgrade ด้วย planId + omiseToken
-   - ถ้า "DOWNGRADE" แสดงข้อความว่าจะเปลี่ยนเมื่อสิ้นรอบบิล (scheduledEffectiveAt) และปุ่มยืนยันเรียก POST .../downgrade (ไม่ต้องใส่บัตร)
+   - ถ้า "UPGRADE" แสดงยอด chargeAmountSatang (แสดงเป็นบาท: หาร 100) คือราคาเต็มแผนปลายทาง — แสดง bankedDaysFromCurrentPlan / bankedDaysAvailableOnTargetPlan ตาม preview
+     แล้วใช้ Omise.js สร้าง token แล้วเรียก POST .../upgrade ด้วย planId + omiseToken
+   - ถ้า "DOWNGRADE" แสดงข้อความว่าจะเปลี่ยนเมื่อสิ้นรอบบิล และปุ่มยืนยันเรียก POST .../downgrade (ไม่ต้องใส่บัตร)
 
 2) หลัง upgrade สำเร็จ หรือเมื่อโหลดหน้า account: เรียก GET /api/membership/current
    - ถ้ามี pendingPlan + scheduledPlanChangeAt ให้แสดงแบนเนอร์ "แผนจะเปลี่ยนเป็น ... วันที่ ..."
+   - แสดง currentPlanBankedDays และรายการ bankedPlans ถ้าต้องการ UI รายละเอียด
 
 3) จัดการ error จาก API (400) ตาม message ใน body
 

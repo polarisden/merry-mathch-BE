@@ -1,6 +1,7 @@
 package com.fsd10.merry_match_backend.dto.subscription;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import com.fsd10.merry_match_backend.dto.plan.PlanDto;
@@ -24,7 +25,8 @@ public record SubscriptionDetailDto(
         LocalDateTime createdAt,
         PlanDto plan,
         PaymentCardDto paymentCard,
-        /** แผนที่รอสลับเมื่อถึง scheduledPlanChangeAt (downgrade) */
         PlanDto pendingPlan,
-        LocalDateTime scheduledPlanChangeAt
+        LocalDateTime scheduledPlanChangeAt,
+        Integer currentPlanBankedDays,
+        List<PlanBankItemDto> bankedPlans
 ) {}

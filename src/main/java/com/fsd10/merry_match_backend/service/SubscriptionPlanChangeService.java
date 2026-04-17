@@ -1,6 +1,5 @@
 package com.fsd10.merry_match_backend.service;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
@@ -24,13 +23,12 @@ import lombok.RequiredArgsConstructor;
 public class SubscriptionPlanChangeService {
 
     private static final ZoneId BANGKOK = ZoneId.of("Asia/Bangkok");
-    /** Omise มักกำหนดขั้นต่ำ ~20 THB — ถ้า prorate ต่ำกว่านี้จะปัดขึ้น */
-    private static final long MIN_UPGRADE_CHARGE_SATANG = 2000L;
 
     private final SubscriptionRepository subscriptionRepository;
     private final PlansRepository plansRepository;
     private final SubscriptionLifecycleService subscriptionLifecycleService;
     private final OmiseSubscriptionService omiseSubscriptionService;
+    private final SubscriptionDayBankService subscriptionDayBankService;
 
     @Transactional(readOnly = true)
     public PlanChangePreviewResponse preview(UUID userId, UUID targetPlanId) {
@@ -42,6 +40,9 @@ public class SubscriptionPlanChangeService {
         Plans current = sub.getPlan();
         Plans target = plansRepository.findById(targetPlanId)
                 .orElseThrow(() -> new EntityNotFoundException("Plan not found"));
+        if (target.getPriceSatang() < current.getPriceSatang()) {
+            target = resolveDowngradeTarget(current, target, userId);
+        }
 
         if (current.getId().equals(target.getId())) {
             return PlanChangePreviewResponse.builder()
@@ -50,41 +51,28 @@ public class SubscriptionPlanChangeService {
                     .currentPlanName(current.getName())
                     .targetPlanId(target.getId())
                     .targetPlanName(target.getName())
-                    .proratedAmountSatang(null)
-                    .scheduledEffectiveAt(null)
+                    .chargeAmountSatang(0)
+                    .immediateEffective(true)
+                    .bankedDaysFromCurrentPlan(0)
+                    .bankedDaysAvailableOnTargetPlan(0)
                     .description("Already on this plan")
                     .build();
         }
-
-        int cmp = Integer.compare(current.getPriceSatang(), target.getPriceSatang());
-        if (cmp == 0) {
-            throw new InvalidPlanChangeException("Target plan has the same price; use a different plan or contact support");
-        }
-
-        if (cmp < 0) {
-            long prorated = computeProratedUpgradeSatang(sub, current.getPriceSatang(), target.getPriceSatang());
-            long toCharge = Math.max(prorated, prorated > 0 ? MIN_UPGRADE_CHARGE_SATANG : 0);
-            return PlanChangePreviewResponse.builder()
-                    .changeType("UPGRADE")
-                    .currentPlanId(current.getId())
-                    .currentPlanName(current.getName())
-                    .targetPlanId(target.getId())
-                    .targetPlanName(target.getName())
-                    .proratedAmountSatang((int) toCharge)
-                    .scheduledEffectiveAt(null)
-                    .description("Prorated charge for remaining time in the current billing period (minimum may apply).")
-                    .build();
-        }
-
+        int bankedFromCurrent = computeRemainingDaysCeil(LocalDateTime.now(BANGKOK), sub.getCurrentPeriodEnd());
+        int bankedOnTarget = subscriptionDayBankService.getRemainingDays(userId, target.getId());
+        String changeType = target.getPriceSatang() > current.getPriceSatang() ? "UPGRADE" : "DOWNGRADE";
+        int chargeAmount = "UPGRADE".equals(changeType) ? target.getPriceSatang() : 0;
         return PlanChangePreviewResponse.builder()
-                .changeType("DOWNGRADE")
+                .changeType(changeType)
                 .currentPlanId(current.getId())
                 .currentPlanName(current.getName())
                 .targetPlanId(target.getId())
                 .targetPlanName(target.getName())
-                .proratedAmountSatang(null)
-                .scheduledEffectiveAt(sub.getCurrentPeriodEnd())
-                .description("No charge now. Plan switches at the end of the current period.")
+                .chargeAmountSatang(chargeAmount)
+                .immediateEffective("UPGRADE".equals(changeType))
+                .bankedDaysFromCurrentPlan(bankedFromCurrent)
+                .bankedDaysAvailableOnTargetPlan(bankedOnTarget)
+                .description("UPGRADE switches immediately with full charge. DOWNGRADE is scheduled at current period end.")
                 .build();
     }
 
@@ -96,8 +84,9 @@ public class SubscriptionPlanChangeService {
         assertActiveForChange(sub);
 
         Plans current = sub.getPlan();
-        Plans target = plansRepository.findById(targetPlanId)
+        Plans requestedTarget = plansRepository.findById(targetPlanId)
                 .orElseThrow(() -> new EntityNotFoundException("Plan not found"));
+        Plans target = resolveDowngradeTarget(current, requestedTarget, userId);
 
         if (current.getId().equals(target.getId())) {
             throw new InvalidPlanChangeException("Already on this plan");
@@ -149,17 +138,11 @@ public class SubscriptionPlanChangeService {
             throw new InvalidPlanChangeException("Already on this plan");
         }
         if (target.getPriceSatang() <= current.getPriceSatang()) {
-            throw new InvalidPlanChangeException("Use downgrade scheduling for same or lower priced plans");
-        }
-
-        long prorated = computeProratedUpgradeSatang(sub, current.getPriceSatang(), target.getPriceSatang());
-        long amount = Math.max(prorated, prorated > 0 ? MIN_UPGRADE_CHARGE_SATANG : 0);
-        if (amount <= 0) {
-            throw new InvalidPlanChangeException("Upgrade amount is zero");
+            throw new InvalidPlanChangeException("Upgrade requires a more expensive target plan");
         }
 
         return omiseSubscriptionService.executePlanUpgradeCharge(
-                userId, sub.getId(), target.getId(), omiseToken, amount);
+                userId, sub.getId(), target.getId(), omiseToken, target.getPriceSatang());
     }
 
     private static void assertActiveForChange(Subscription sub) {
@@ -172,26 +155,20 @@ public class SubscriptionPlanChangeService {
         }
     }
 
-    private static long computeProratedUpgradeSatang(Subscription sub, int oldPriceSatang, int newPriceSatang) {
-        long diff = (long) newPriceSatang - (long) oldPriceSatang;
-        if (diff <= 0) {
+    private static int computeRemainingDaysCeil(LocalDateTime now, LocalDateTime periodEnd) {
+        if (periodEnd == null || !periodEnd.isAfter(now)) {
             return 0;
         }
-        LocalDateTime now = LocalDateTime.now(BANGKOK);
-        LocalDateTime start = sub.getCurrentPeriodStart();
-        LocalDateTime end = sub.getCurrentPeriodEnd();
-        if (start == null || end == null || !end.isAfter(start)) {
-            throw new InvalidPlanChangeException("Invalid subscription period");
+        long remainingSeconds = java.time.Duration.between(now, periodEnd).getSeconds();
+        return (int) Math.ceil(remainingSeconds / 86400.0d);
+    }
+
+    private Plans resolveDowngradeTarget(Plans current, Plans requestedTarget, UUID userId) {
+        if (requestedTarget.getPriceSatang() >= current.getPriceSatang()) {
+            throw new InvalidPlanChangeException("Downgrade requires a cheaper plan than your current plan");
         }
-        long totalMs = Duration.between(start, end).toMillis();
-        long remainingMs = Duration.between(now, end).toMillis();
-        if (remainingMs <= 0) {
-            return 0;
-        }
-        if (totalMs <= 0) {
-            throw new InvalidPlanChangeException("Invalid billing period length");
-        }
-        double raw = (double) diff * (double) remainingMs / (double) totalMs;
-        return (long) Math.ceil(raw);
+        return subscriptionDayBankService
+                .findHighestPricedBankPlanBelowPrice(userId, current.getPriceSatang())
+                .orElse(requestedTarget);
     }
 }
