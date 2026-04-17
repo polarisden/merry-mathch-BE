@@ -1,10 +1,7 @@
 package com.fsd10.merry_match_backend.controller;
 
-import java.util.UUID;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,22 +13,23 @@ import com.fsd10.merry_match_backend.service.SubscriptionReadService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/subscriptions")
+@RequestMapping("/api/membership")
 @RequiredArgsConstructor
-public class SubscriptionController {
+public class MembershipController {
 
     private final SubscriptionReadService subscriptionReadService;
     private final SupabaseJwtService supabaseJwtService;
 
     /**
-     * Current user's subscription by id (must belong to JWT user). For success page / account.
+     * Current user's subscription (one row per user). 404 if no subscription yet.
      */
-    @GetMapping("/{id}")
-    public ResponseEntity<SubscriptionDetailDto> getSubscription(
-            @RequestHeader("Authorization") String authorization,
-            @PathVariable UUID id
+    @GetMapping("/current")
+    public ResponseEntity<SubscriptionDetailDto> getCurrentMembership(
+            @RequestHeader("Authorization") String authorization
     ) {
-        UUID userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
-        return ResponseEntity.ok(subscriptionReadService.getSubscriptionForUser(id, userId));
+        var userId = supabaseJwtService.requireUserIdFromAuthorization(authorization);
+        return subscriptionReadService.findCurrentMembershipForUser(userId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

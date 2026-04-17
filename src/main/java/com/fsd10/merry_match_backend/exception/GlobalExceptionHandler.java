@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+import co.omise.models.OmiseException;
+import jakarta.persistence.EntityNotFoundException;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,6 +22,44 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(PlanNotFoundException.class)
   public ResponseEntity<Map<String, Object>> handlePlanNotFound(PlanNotFoundException ex) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(bodyWithMessage("Not Found", ex.getMessage()));
+  }
+
+  @ExceptionHandler(SubscriptionNotFoundException.class)
+  public ResponseEntity<Map<String, Object>> handleSubscriptionNotFound(SubscriptionNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(bodyWithMessage("Not Found", ex.getMessage()));
+  }
+
+  @ExceptionHandler(EntityNotFoundException.class)
+  public ResponseEntity<Map<String, Object>> handleEntityNotFound(EntityNotFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(bodyWithMessage("Not Found", ex.getMessage()));
+  }
+
+  @ExceptionHandler(SubscriptionAlreadyActiveException.class)
+  public ResponseEntity<Map<String, Object>> handleSubscriptionConflict(SubscriptionAlreadyActiveException ex) {
+    return ResponseEntity.status(HttpStatus.CONFLICT).body(bodyWithMessage("Conflict", ex.getMessage()));
+  }
+
+  @ExceptionHandler(SubscriptionPaymentException.class)
+  public ResponseEntity<Map<String, Object>> handleSubscriptionPayment(SubscriptionPaymentException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(bodyWithMessage("Bad Request", ex.getMessage()));
+  }
+
+  @ExceptionHandler(InvalidPlanChangeException.class)
+  public ResponseEntity<Map<String, Object>> handleInvalidPlanChange(InvalidPlanChangeException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(bodyWithMessage("Bad Request", ex.getMessage()));
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(bodyWithMessage("Bad Request", ex.getMessage()));
+  }
+
+  @ExceptionHandler(OmiseException.class)
+  public ResponseEntity<Map<String, Object>> handleOmise(OmiseException ex) {
+    int code = ex.getHttpStatusCode();
+    HttpStatus status = (code >= 400 && code < 600) ? HttpStatus.valueOf(code) : HttpStatus.BAD_REQUEST;
+    String msg = ex.getMessage() != null ? ex.getMessage() : "Omise error";
+    return ResponseEntity.status(status).body(bodyWithMessage(status.getReasonPhrase(), msg));
   }
 
   @ExceptionHandler(RegisterFailedException.class)
