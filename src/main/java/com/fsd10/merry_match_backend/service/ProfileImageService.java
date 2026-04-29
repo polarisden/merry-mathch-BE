@@ -61,6 +61,13 @@ public class ProfileImageService {
   }
 
   /**
+   * Deletes an object from the default public bucket by its public URL.
+   */
+  public void deletePublicObjectByUrl(String publicUrl) {
+    deleteObjectByPublicUrlIfPossible(publicUrl);
+  }
+
+  /**
    * Upload to an arbitrary public bucket (e.g. {@code chat-images} for chat).
    */
   public String uploadPublicObjectToBucket(String bucketName, String objectName, MultipartFile file) {

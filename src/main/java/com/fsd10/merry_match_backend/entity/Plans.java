@@ -58,6 +58,6 @@ public class Plans {
     @Column(name = "updated_at", insertable = false)
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "plan", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "plan", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PlanDescription> descriptions;
 }

@@ -12,10 +12,14 @@ public record PlanDto(
         String name,
         Integer priceSatang,
         Integer swipeLimit,
+        Integer merryLimit,
         Boolean canSeeLikers,
         Integer sortOrder,
+        String icon,
+        String iconUrl,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
+        List<PlanDescriptionDto> details,
         List<PlanDescriptionDto> descriptions
 ) {}
 
